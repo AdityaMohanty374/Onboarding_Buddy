@@ -89,11 +89,46 @@ class SearchHit:
     line_no: int
     line_text: str
 
+# File types that talk *about* code rather than *being* code. A keyword match
+# here is usually someone's prose mentioning a name, not the definition site —
+# so we rank these below real source hits instead of treating every hit equally.
+_DOC_LIKE_EXTENSIONS = {".md", ".rst", ".txt", ".adoc"}
+_DOC_LIKE_BASENAMES = {"changes", "changelog", "history", "news", "authors", "contributors"}
+
+_STOPWORDS = {"the", "why", "does", "this", "work", "way", "what", "how", "and", "for"}
+
+def _extract_terms(query: str) -> list[str]:
+    return [t for t in re.findall(r"[A-Za-z_][A-Za-z0-9_]{2,}", query) if t.lower() not in _STOPWORDS]
+
+def _score_hit(hit: "SearchHit", terms: list[str]) -> int:
+    """Higher score = more likely to be the actual definition/behavior site,
+    rather than an incidental mention (docs, changelogs, comments about it)."""
+    score = 0
+    ext = os.path.splitext(hit.file)[1].lower()
+    base = os.path.splitext(os.path.basename(hit.file))[0].lower()
+
+    if ext in _DOC_LIKE_EXTENSIONS or base in _DOC_LIKE_BASENAMES:
+        score -= 5
+
+    for term in terms:
+        escaped = re.escape(term)
+        # `def term(` / `class Term` — this line *is* the definition.
+        if re.search(rf"\b(def|class)\s+{escaped}\b", hit.line_text):
+            score += 10
+        # `def something_with_term(` — a function whose name contains the term.
+        elif re.search(rf"\bdef\s+\w*{escaped}\w*\s*\(", hit.line_text):
+            score += 6
+        # plain mention of the term anywhere else on the line.
+        elif re.search(rf"\b{escaped}\b", hit.line_text, re.IGNORECASE):
+            score += 1
+    return score
 
 def search_code(repo_path: str, query: str, max_hits: int) -> list[SearchHit]:
     """Keyword search via `git grep` — fast, no index to build, works on any
     commit already checked out. Falls back to per-term OR search if the
-    literal phrase has no hits."""
+    literal phrase has no hits, then ranks all candidates so that actual
+    function/class definitions in source files outrank incidental mentions
+    in docs or changelogs."""
     def _grep(pattern: str) -> list[SearchHit]:
         try:
             out = _run(
@@ -114,13 +149,15 @@ def search_code(repo_path: str, query: str, max_hits: int) -> list[SearchHit]:
                 continue
         return hits
 
+    terms = _extract_terms(query)
     hits = _grep(query)
     if not hits:
-        terms = [t for t in re.findall(r"[A-Za-z_][A-Za-z0-9_]{2,}", query) if t.lower() not in
-                  {"the", "why", "does", "this", "work", "way", "what", "how", "and", "for"}]
+        # Cast a wider net than max_hits here — we need enough candidates for
+        # ranking to actually do something. It gets trimmed after scoring.
+        candidate_pool = max_hits * 3
         for term in terms[:4]:
             hits.extend(_grep(term))
-            if len(hits) >= max_hits:
+            if len(hits) >= candidate_pool:
                 break
 
     # de-dupe by (file, line_no)
@@ -131,7 +168,11 @@ def search_code(repo_path: str, query: str, max_hits: int) -> list[SearchHit]:
         if key not in seen:
             seen.add(key)
             unique.append(h)
-    return unique[:max_hits]
+    
+    # Rank: real definitions in source files first, doc/changelog mentions
+    # last. Stable sort keeps original grep order within equal scores.
+    ranked = sorted(unique, key=lambda h: _score_hit(h, terms), reverse=True)
+    return ranked[:max_hits]
 
 
 def read_snippet(repo_path: str, file: str, line_no: int, context: int = 6) -> str:

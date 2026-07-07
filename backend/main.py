@@ -1,3 +1,6 @@
+import base64
+import json
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -17,6 +20,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Evidence"]
 )
 
 # in-memory session state — this is a local dev tool, not a multi-user service
@@ -111,6 +115,8 @@ def ask(req: AskRequest):
     evidence_text = prompts.build_evidence_block(evidence_entries)
 
     # keep the prompt within budget — trim oldest evidence blocks first
+    # (search_code already returns best-ranked hits first, so popping from the
+    # end drops the weakest evidence, not the strongest)
     while len(evidence_text) > settings.MAX_CONTEXT_CHARS and evidence_entries:
         evidence_entries.pop()
         evidence_text = prompts.build_evidence_block(evidence_entries)
@@ -120,10 +126,46 @@ def ask(req: AskRequest):
         prompts.build_user_message(req.question, STATE["repo_name"], evidence_text),
     ]
 
+    # Compact evidence summary for the UI's "Evidence" panel — deliberately
+    # excludes full snippets/commit bodies (those stay server-side, in the
+    # LLM's prompt only) to keep the header small and avoid ever shipping
+    # more repo content to the browser than the sidebar's file list already
+    # implies is public.
+    owner_repo = STATE["owner_repo"]
+    summary = []
+    for e in evidence_entries:
+        item = {"file": e["file"], "line_no": e["line_no"]}
+        if e.get("commit"):
+            c = e["commit"]
+            item["commit"] = {
+                "hash": c["commit_hash"][:7],
+                "author": c["author"],
+                "date": c["date"],
+                "summary": c["summary"],
+                "url": (
+                    f"https://github.com/{owner_repo[0]}/{owner_repo[1]}/commit/{c['commit_hash']}"
+                    if owner_repo else None
+                ),
+            }
+        if e.get("pr"):
+            item["pr"] = {
+                "number": e["pr"]["number"],
+                "title": e["pr"]["title"],
+                "url": e["pr"]["url"],
+                "is_pr": e["pr"]["is_pr"],
+            }
+        summary.append(item)
+
+    evidence_header = base64.b64encode(json.dumps(summary).encode()).decode()
+
     def generate():
         yield from stream_response(messages)
 
-    return StreamingResponse(generate(), media_type="text/plain")
+    return StreamingResponse(
+        generate(),
+        media_type="text/plain",
+        headers={"X-Evidence": evidence_header},
+    )
 
 
 # Serve the frontend as static files (index.html sits in ../frontend)

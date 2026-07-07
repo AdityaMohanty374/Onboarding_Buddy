@@ -215,6 +215,32 @@
     white-space:pre-wrap; word-break:break-word;
   }
 
+  /* ── Evidence panel — makes "every claim is traceable" visible, not just true ── */
+  .evidence{
+    margin-top:.85rem; padding-top:.75rem; border-top:1px dashed var(--seam);
+  }
+  .evidence summary{
+    cursor:pointer; list-style:none; font-size:.6rem; letter-spacing:.12em; text-transform:uppercase;
+    color: var(--paper-text-dim); display:flex; align-items:center; gap:.4rem; user-select:none;
+  }
+  .evidence summary::-webkit-details-marker{ display:none; }
+  .evidence summary::before{ content:'▸'; font-size:.7rem; transition: transform .16s var(--ease-std); }
+  .evidence[open] summary::before{ transform: rotate(90deg); }
+  .evidence summary:hover{ color: var(--paper-text); }
+  .evidence-tags{ display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.6rem; }
+  .evidence-tag{
+    display:inline-flex; align-items:center; gap:.35rem;
+    font-size:.62rem; padding:.28rem .55rem; border-radius:3px;
+    background: var(--noir-700); border:1px solid var(--seam); color: var(--paper-text-dim);
+    text-decoration:none; transition: border-color .14s var(--ease-std), color .14s var(--ease-std);
+    max-width: 100%;
+  }
+  .evidence-tag:hover{ border-color: var(--stamp); color: var(--paper-text); }
+  .evidence-tag .kind{ color: var(--stamp); font-weight:600; flex-shrink:0; }
+  .evidence-tag .loc{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .evidence-tag.pr .kind{ color: var(--lamp); }
+  .evidence-empty{ font-size:.62rem; color: var(--paper-text-dim); margin-top:.6rem; font-style:italic; }
+
   .typing-row{ display:flex; gap:.9rem; }
   .typing-row .pin{ width:8px; height:8px; border-radius:50%; background: var(--stamp); margin-top:.65rem; flex-shrink:0; }
   .typing-dots{ display:flex; gap:4px; align-items:center; padding:.75rem 0; }
@@ -457,6 +483,73 @@
     }
   });
 
+  function renderEvidencePanel(reportEl, headerValue){
+    const details = document.createElement('details');
+    details.className = 'evidence';
+    const summary = document.createElement('summary');
+
+    let items = [];
+    if (headerValue) {
+      try { items = JSON.parse(atob(headerValue)); } catch (e) { items = []; }
+    }
+
+    summary.textContent = items.length ? `Evidence (${items.length})` : 'Evidence';
+    details.appendChild(summary);
+
+    if (!items.length) {
+      const empty = document.createElement('p');
+      empty.className = 'evidence-empty';
+      empty.textContent = 'No direct evidence was found — treat this answer as inference, not documented fact.';
+      details.appendChild(empty);
+      reportEl.appendChild(details);
+      return;
+    }
+
+    const tagsWrap = document.createElement('div');
+    tagsWrap.className = 'evidence-tags';
+
+    items.forEach(item => {
+      // one tag for the code location + blame commit
+      const tag = document.createElement(item.commit && item.commit.url ? 'a' : 'span');
+      tag.className = 'evidence-tag';
+      if (item.commit && item.commit.url) {
+        tag.href = item.commit.url;
+        tag.target = '_blank';
+        tag.rel = 'noopener noreferrer';
+      }
+      const kind = document.createElement('span');
+      kind.className = 'kind';
+      kind.textContent = item.commit ? item.commit.hash : '·';
+      const loc = document.createElement('span');
+      loc.className = 'loc';
+      loc.textContent = `${item.file}:${item.line_no}`;
+      tag.appendChild(kind);
+      tag.appendChild(loc);
+      tagsWrap.appendChild(tag);
+
+      // separate tag for the linked PR/issue, if any
+      if (item.pr) {
+        const prTag = document.createElement('a');
+        prTag.className = 'evidence-tag pr';
+        prTag.href = item.pr.url;
+        prTag.target = '_blank';
+        prTag.rel = 'noopener noreferrer';
+        const prKind = document.createElement('span');
+        prKind.className = 'kind';
+        prKind.textContent = (item.pr.is_pr ? 'PR #' : 'Issue #') + item.pr.number;
+        const prLoc = document.createElement('span');
+        prLoc.className = 'loc';
+        prLoc.textContent = item.pr.title;
+        prTag.appendChild(prKind);
+        prTag.appendChild(prLoc);
+        tagsWrap.appendChild(prTag);
+      }
+    });
+
+    details.appendChild(tagsWrap);
+    reportEl.appendChild(details);
+  }
+
   async function sendChat(){
     const text = chatInput.value.trim();
     if (!text) return;
@@ -481,7 +574,9 @@
         throw new Error(err.detail || 'Request failed.');
       }
       const assistantMessage = createMessage('assistant', '');
+      const reportEl = assistantMessage.querySelector('.report');
       const body = assistantMessage.querySelector('.report-body');
+      renderEvidencePanel(reportEl, res.headers.get('X-Evidence'));
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       while (true) {
