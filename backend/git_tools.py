@@ -97,6 +97,32 @@ _DOC_LIKE_BASENAMES = {"changes", "changelog", "history", "news", "authors", "co
 
 _STOPWORDS = {"the", "why", "does", "this", "work", "way", "what", "how", "and", "for"}
 
+def _extract_terms(query: str) -> list[str]:
+    return [t for t in re.findall(r"[A-Za-z_][A-Za-z0-9_]{2,}", query) if t.lower() not in _STOPWORDS]
+
+def _score_hit(hit: "SearchHit", terms: list[str]) -> int:
+    """Higher score = more likely to be the actual definition/behavior site,
+    rather than an incidental mention (docs, changelogs, comments about it)."""
+    score = 0
+    ext = os.path.splitext(hit.file)[1].lower()
+    base = os.path.splitext(os.path.basename(hit.file))[0].lower()
+
+    if ext in _DOC_LIKE_EXTENSIONS or base in _DOC_LIKE_BASENAMES:
+        score -= 5
+
+    for term in terms:
+        escaped = re.escape(term)
+        # `def term(` / `class Term` — this line *is* the definition.
+        if re.search(rf"\b(def|class)\s+{escaped}\b", hit.line_text):
+            score += 10
+        # `def something_with_term(` — a function whose name contains the term.
+        elif re.search(rf"\bdef\s+\w*{escaped}\w*\s*\(", hit.line_text):
+            score += 6
+        # plain mention of the term anywhere else on the line.
+        elif re.search(rf"\b{escaped}\b", hit.line_text, re.IGNORECASE):
+            score += 1
+    return score
+
 def search_code(repo_path: str, query: str, max_hits: int) -> list[SearchHit]:
     """Keyword search via `git grep` — fast, no index to build, works on any
     commit already checked out. Falls back to per-term OR search if the
