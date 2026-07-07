@@ -126,7 +126,9 @@ def _score_hit(hit: "SearchHit", terms: list[str]) -> int:
 def search_code(repo_path: str, query: str, max_hits: int) -> list[SearchHit]:
     """Keyword search via `git grep` — fast, no index to build, works on any
     commit already checked out. Falls back to per-term OR search if the
-    literal phrase has no hits."""
+    literal phrase has no hits, then ranks all candidates so that actual
+    function/class definitions in source files outrank incidental mentions
+    in docs or changelogs."""
     def _grep(pattern: str) -> list[SearchHit]:
         try:
             out = _run(
@@ -147,13 +149,15 @@ def search_code(repo_path: str, query: str, max_hits: int) -> list[SearchHit]:
                 continue
         return hits
 
+    terms = _extract_terms(query)
     hits = _grep(query)
     if not hits:
-        terms = [t for t in re.findall(r"[A-Za-z_][A-Za-z0-9_]{2,}", query) if t.lower() not in
-                  {"the", "why", "does", "this", "work", "way", "what", "how", "and", "for"}]
+        # Cast a wider net than max_hits here — we need enough candidates for
+        # ranking to actually do something. It gets trimmed after scoring.
+        candidate_pool = max_hits * 3
         for term in terms[:4]:
             hits.extend(_grep(term))
-            if len(hits) >= max_hits:
+            if len(hits) >= candidate_pool:
                 break
 
     # de-dupe by (file, line_no)
@@ -164,7 +168,11 @@ def search_code(repo_path: str, query: str, max_hits: int) -> list[SearchHit]:
         if key not in seen:
             seen.add(key)
             unique.append(h)
-    return unique[:max_hits]
+    
+    # Rank: real definitions in source files first, doc/changelog mentions
+    # last. Stable sort keeps original grep order within equal scores.
+    ranked = sorted(unique, key=lambda h: _score_hit(h, terms), reverse=True)
+    return ranked[:max_hits]
 
 
 def read_snippet(repo_path: str, file: str, line_no: int, context: int = 6) -> str:
