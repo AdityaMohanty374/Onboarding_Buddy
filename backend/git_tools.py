@@ -89,6 +89,13 @@ class SearchHit:
     line_no: int
     line_text: str
 
+# File types that talk *about* code rather than *being* code. A keyword match
+# here is usually someone's prose mentioning a name, not the definition site —
+# so we rank these below real source hits instead of treating every hit equally.
+_DOC_LIKE_EXTENSIONS = {".md", ".rst", ".txt", ".adoc"}
+_DOC_LIKE_BASENAMES = {"changes", "changelog", "history", "news", "authors", "contributors"}
+
+_STOPWORDS = {"the", "why", "does", "this", "work", "way", "what", "how", "and", "for"}
 
 def search_code(repo_path: str, query: str, max_hits: int) -> list[SearchHit]:
     """Keyword search via `git grep` — fast, no index to build, works on any
