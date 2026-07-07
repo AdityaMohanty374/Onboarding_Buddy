@@ -1,0 +1,130 @@
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+
+import git_tools
+import github_api
+import prompts
+from llm import stream_response
+from config import settings
+
+app = FastAPI(title="Onboarding Buddy")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# in-memory session state — this is a local dev tool, not a multi-user service
+STATE = {"repo_path": None, "repo_name": None, "owner_repo": None}
+
+
+class LoadRepoRequest(BaseModel):
+    source: str  # local path or git URL
+
+
+class AskRequest(BaseModel):
+    question: str
+    file_path: str | None = None
+    line: int | None = None
+
+
+@app.get("/")
+def home():
+    return {"status": "running", "message": "Onboarding Buddy API"}
+
+
+@app.post("/repo/load")
+def load_repo(req: LoadRepoRequest):
+    try:
+        repo_path = git_tools.load_repo(req.source)
+    except git_tools.GitError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    remote = git_tools.repo_remote_url(repo_path)
+    owner_repo = git_tools.parse_github_owner_repo(remote)
+    repo_name = req.source.rstrip("/").split("/")[-1].removesuffix(".git")
+
+    STATE["repo_path"] = repo_path
+    STATE["repo_name"] = repo_name
+    STATE["owner_repo"] = owner_repo
+
+    files = git_tools.list_tracked_files(repo_path, limit=200)
+    return {
+        "repo_name": repo_name,
+        "github": f"{owner_repo[0]}/{owner_repo[1]}" if owner_repo else None,
+        "file_count": len(git_tools.list_tracked_files(repo_path, limit=100000)),
+        "sample_files": files,
+    }
+
+
+def _gather_evidence(question: str, file_path: str | None, line: int | None) -> list[dict]:
+    repo_path = STATE["repo_path"]
+    owner_repo = STATE["owner_repo"]
+    entries: list[dict] = []
+
+    if file_path and line:
+        hits = [git_tools.SearchHit(file=file_path, line_no=line, line_text="")]
+    else:
+        hits = git_tools.search_code(repo_path, question, settings.MAX_SEARCH_HITS)
+
+    seen_commits = set()
+    for hit in hits[: settings.MAX_BLAME_COMMITS]:
+        snippet = git_tools.read_snippet(repo_path, hit.file, hit.line_no)
+        blame = git_tools.blame_line(repo_path, hit.file, hit.line_no)
+
+        entry = {"file": hit.file, "line_no": hit.line_no, "snippet": snippet}
+
+        if blame:
+            entry["commit"] = {
+                "commit_hash": blame.commit_hash,
+                "author": blame.author,
+                "date": blame.date,
+                "summary": blame.summary,
+            }
+            if blame.commit_hash not in seen_commits:
+                seen_commits.add(blame.commit_hash)
+                body = git_tools.commit_body(repo_path, blame.commit_hash)
+                entry["commit_body"] = body
+
+                pr_number = git_tools.extract_pr_number(body or blame.summary)
+                if pr_number and owner_repo:
+                    pr = github_api.fetch_pull_or_issue(owner_repo[0], owner_repo[1], pr_number)
+                    if pr:
+                        entry["pr"] = pr
+
+        entries.append(entry)
+
+    return entries
+
+
+@app.post("/ask")
+def ask(req: AskRequest):
+    if not STATE["repo_path"]:
+        raise HTTPException(status_code=400, detail="Load a repository first via /repo/load.")
+
+    evidence_entries = _gather_evidence(req.question, req.file_path, req.line)
+    evidence_text = prompts.build_evidence_block(evidence_entries)
+
+    # keep the prompt within budget — trim oldest evidence blocks first
+    while len(evidence_text) > settings.MAX_CONTEXT_CHARS and evidence_entries:
+        evidence_entries.pop()
+        evidence_text = prompts.build_evidence_block(evidence_entries)
+
+    messages = [
+        prompts.SYSTEM_PROMPT,
+        prompts.build_user_message(req.question, STATE["repo_name"], evidence_text),
+    ]
+
+    def generate():
+        yield from stream_response(messages)
+
+    return StreamingResponse(generate(), media_type="text/plain")
+
+
+# Serve the frontend as static files (index.html sits in ../frontend)
+app.mount("/", StaticFiles(directory="../frontend", html=True), name="frontend")

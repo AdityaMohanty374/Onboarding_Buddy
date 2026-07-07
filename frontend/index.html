@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Onboarding Buddy — Case File</title>
+<meta name="description" content="Ask why the code works the way it does. Every answer comes with its evidence." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+
+  :root{
+    --noir-950:#0B0C0E; --noir-900:#101115; --noir-800:#16181C; --noir-700:#1D2025;
+    --seam:#272B31;
+
+    --card:#EFE8D6; --card-hi:#F7F2E4; --card-ink:#2A2620;
+
+    --thread:#B5402F;
+    --thread-glow: rgba(181,64,47,0.25);
+    --stamp:#4B6F52;
+    --stamp-glow: rgba(75,111,82,0.22);
+    --lamp:#D89B45;
+    --lamp-hi:#E8B968;
+
+    --paper-text:#C9C2AE;
+    --paper-text-dim:#7C7768;
+
+    --font-stamp:'Special Elite', 'Courier New', monospace;
+    --font-mono:'JetBrains Mono', ui-monospace, monospace;
+
+    --r-card: 2px;
+    --r-md: 4px;
+
+    --ease-out: cubic-bezier(.16,1,.3,1);
+    --ease-std: cubic-bezier(.4,0,.2,1);
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{animation-duration:.001ms!important;transition-duration:.001ms!important;}
+  }
+
+  html,body{height:100%;}
+  body{
+    background: var(--noir-950);
+    color: var(--paper-text);
+    font-family: var(--font-mono);
+    display:flex; flex-direction:column; height:100vh; overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{ background: var(--thread-glow); color: var(--card-hi); }
+  :focus-visible{ outline:2px solid var(--lamp); outline-offset:2px; }
+
+  body::before{
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:999; opacity:.5;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+  }
+  body::after{
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:1;
+    background: radial-gradient(900px 480px at 12% -8%, rgba(216,155,69,.05), transparent 60%),
+                radial-gradient(700px 420px at 100% 105%, rgba(181,64,47,.05), transparent 60%);
+  }
+
+  header{
+    position:relative; z-index:50; flex-shrink:0;
+    display:flex; align-items:center; gap:1rem;
+    padding: .85rem 1.5rem;
+    background: var(--noir-900);
+    border-bottom: 1px solid var(--seam);
+  }
+
+  .case-tab{
+    display:flex; align-items:center; gap:.65rem;
+    background: var(--card);
+    color: var(--card-ink);
+    padding: .3rem .75rem .3rem .6rem;
+    border-radius: 2px 2px 0 0;
+    transform: rotate(-0.6deg);
+    box-shadow: 0 2px 5px rgba(0,0,0,.35);
+    position: relative;
+  }
+  .case-tab::after{
+    content:''; position:absolute; left:0; right:0; bottom:-3px; height:3px;
+    background: linear-gradient(180deg, rgba(0,0,0,.2), transparent);
+  }
+  .case-tab .stamp-dot{ width:8px; height:8px; border-radius:50%; background:var(--thread); flex-shrink:0; }
+  .case-tab .stamp-dot.live{ background:var(--stamp); animation:pulse 2.4s ease infinite; }
+  .case-tab span.label{
+    font-family: var(--font-stamp);
+    font-size: .82rem;
+    letter-spacing: .02em;
+  }
+
+  header .subtitle{
+    font-size:.62rem; letter-spacing:.16em; text-transform:uppercase;
+    color: var(--paper-text-dim); padding-left:1rem; border-left:1px solid var(--seam);
+  }
+
+  .repo-status{
+    margin-left:auto; display:flex; align-items:center; gap:.5rem;
+    font-size:.66rem; color: var(--paper-text-dim);
+  }
+  .repo-status .dot{ width:6px; height:6px; border-radius:50%; background:var(--paper-text-dim); }
+  .repo-status.active .dot{ background: var(--stamp); box-shadow:0 0 6px var(--stamp-glow); }
+  .repo-status.active{ color: var(--paper-text); }
+
+  .layout{ position:relative; z-index:2; display:flex; flex:1; min-height:0; }
+
+  .sidebar{
+    width: 320px; flex-shrink:0;
+    background: var(--noir-900);
+    border-right: 1px solid var(--seam);
+    padding: 1.5rem 1.4rem;
+    display:flex; flex-direction:column; gap:1.4rem;
+    overflow-y:auto;
+    position:relative;
+  }
+  .sidebar::before{
+    content:''; position:absolute; left:28px; top:1.5rem; bottom:1.5rem; width:1px;
+    background: repeating-linear-gradient(180deg, var(--thread), var(--thread) 5px, transparent 5px, transparent 10px);
+    opacity:.35;
+  }
+
+  .step{ position:relative; padding-left: 1.9rem; }
+  .step::before{
+    content:''; position:absolute; left:24px; top:.15rem; width:9px; height:9px;
+    border-radius:50%; background: var(--noir-900); border:2px solid var(--thread);
+  }
+  .step.done::before{ background: var(--stamp); border-color: var(--stamp); }
+
+  .eyebrow{
+    font-size:.6rem; letter-spacing:.18em; text-transform:uppercase;
+    color: var(--paper-text-dim); margin-bottom:.55rem;
+  }
+
+  .field{
+    width:100%; background: var(--noir-700); border:1px solid var(--seam);
+    border-radius: var(--r-md); padding:.6rem .7rem;
+    color: var(--paper-text); font-family: var(--font-mono); font-size:.72rem;
+    outline:none; transition: border-color .16s var(--ease-std), box-shadow .16s var(--ease-std);
+  }
+  .field::placeholder{ color: var(--paper-text-dim); }
+  .field:focus{ border-color: var(--lamp); box-shadow: 0 0 0 3px rgba(216,155,69,.15); }
+
+  .btn{
+    width:100%; padding:.65rem; border-radius: var(--r-md);
+    font-family: var(--font-mono); font-size:.66rem; font-weight:600;
+    letter-spacing:.09em; text-transform:uppercase; cursor:pointer; border:none;
+    transition: transform .12s var(--ease-std), box-shadow .12s var(--ease-std), filter .12s var(--ease-std);
+  }
+  .btn:active{ transform: scale(.98); }
+  .btn:disabled{ opacity:.32; cursor:not-allowed; }
+  .btn-lamp{
+    background: linear-gradient(135deg, var(--lamp-hi), var(--lamp));
+    color: var(--noir-950);
+    box-shadow: 0 2px 8px rgba(216,155,69,.15);
+  }
+  .btn-lamp:hover:not(:disabled){ filter:brightness(1.08); box-shadow:0 6px 18px -4px rgba(216,155,69,.4); }
+
+  .hint{ font-size:.6rem; color: var(--paper-text-dim); line-height:1.7; margin-top:.55rem; }
+
+  .seam-divider{ height:1px; background: var(--seam); margin-left: 1.9rem; }
+
+  .file-ledger{
+    font-size:.62rem; color: var(--paper-text-dim); max-height:170px; overflow-y:auto;
+    display:flex; flex-direction:column; gap:.15rem;
+  }
+  .file-ledger span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .file-ledger span::before{ content:'· '; color:var(--thread); }
+
+  .chat-pane{ flex:1; display:flex; flex-direction:column; min-width:0; }
+
+  .board{
+    flex:1; overflow-y:auto; padding: 2.2rem 3rem;
+    display:flex; flex-direction:column; gap:1.6rem;
+  }
+  .board::-webkit-scrollbar{ width:4px; }
+  .board::-webkit-scrollbar-thumb{ background: var(--seam); border-radius:99px; }
+
+  .empty-state{ margin:auto; text-align:center; max-width:460px; }
+  .empty-state .badge{
+    display:inline-block; font-family:var(--font-stamp); font-size:.72rem; color:var(--thread);
+    border:2px solid var(--thread); border-radius:4px; padding:.3rem .8rem; transform:rotate(-3deg);
+    margin-bottom:1.4rem; letter-spacing:.06em;
+  }
+  .empty-text{ font-size:.72rem; color: var(--paper-text-dim); line-height:2; }
+
+  .message.user{ display:flex; justify-content:flex-end; animation: dropIn .3s var(--ease-out) both; }
+  .message.user .note{
+    max-width:72%; background: var(--card); color: var(--card-ink);
+    padding:.7rem 1rem; border-radius: var(--r-card);
+    font-size:.78rem; line-height:1.6; white-space:pre-wrap; word-break:break-word;
+    box-shadow: 0 3px 8px rgba(0,0,0,.35);
+    transform: rotate(0.6deg);
+    position:relative;
+  }
+  .message.user .note::before{
+    content:''; position:absolute; top:-7px; left:50%; transform:translateX(-50%) rotate(-2deg);
+    width:46px; height:14px; background: rgba(239,232,214,.35); border:1px solid rgba(0,0,0,.08);
+  }
+
+  .message.assistant{ display:flex; gap:.9rem; animation: dropIn .32s var(--ease-out) both; }
+  .message.assistant .pin{
+    width:8px; height:8px; border-radius:50%; background: var(--stamp); margin-top:.5rem; flex-shrink:0;
+    box-shadow: 0 0 6px var(--stamp-glow);
+  }
+  .message.assistant .report{
+    flex:1; min-width:0; background: var(--noir-800); border:1px solid var(--seam);
+    border-left: 3px solid var(--stamp);
+    border-radius: var(--r-md);
+    padding: .9rem 1.1rem;
+  }
+  .report-body{
+    font-size:.8rem; line-height:1.85; color: var(--paper-text);
+    white-space:pre-wrap; word-break:break-word;
+  }
+
+  .typing-row{ display:flex; gap:.9rem; }
+  .typing-row .pin{ width:8px; height:8px; border-radius:50%; background: var(--stamp); margin-top:.65rem; flex-shrink:0; }
+  .typing-dots{ display:flex; gap:4px; align-items:center; padding:.75rem 0; }
+  .typing-dots span{ width:5px; height:5px; border-radius:50%; background: var(--stamp); animation: blink 1.2s ease infinite; }
+  .typing-dots span:nth-child(2){ animation-delay:.2s; }
+  .typing-dots span:nth-child(3){ animation-delay:.4s; }
+
+  .msg-error{
+    font-size:.72rem; color: var(--thread); padding:.75rem 1rem;
+    border:1px solid rgba(181,64,47,.4); background: rgba(181,64,47,.08); border-radius: var(--r-md);
+  }
+
+  .input-area{
+    flex-shrink:0; border-top:1px solid var(--seam); background: var(--noir-900);
+    padding: 1rem 3rem; display:flex; gap:.7rem; align-items:flex-end;
+  }
+  .chat-input{
+    flex:1; background: var(--noir-700); border:1px solid var(--seam); border-radius: var(--r-md);
+    padding:.7rem 1rem; font-family: var(--font-mono); font-size:.78rem; color: var(--paper-text);
+    resize:none; outline:none; line-height:1.6; min-height:44px; max-height:120px; overflow-y:auto;
+    transition: border-color .16s var(--ease-std), box-shadow .16s var(--ease-std);
+  }
+  .chat-input::placeholder{ color: var(--paper-text-dim); }
+  .chat-input:focus{ border-color: var(--lamp); box-shadow:0 0 0 3px rgba(216,155,69,.15); }
+
+  .send-btn{
+    background: linear-gradient(135deg, var(--lamp-hi), var(--lamp)); border:none; color: var(--noir-950);
+    font-family: var(--font-mono); font-size:.62rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+    padding:0 1.3rem; height:44px; cursor:pointer; border-radius: var(--r-md); flex-shrink:0; white-space:nowrap;
+    transition: filter .12s var(--ease-std), transform .12s var(--ease-std);
+  }
+  .send-btn:hover:not(:disabled){ filter:brightness(1.08); }
+  .send-btn:disabled{ opacity:.32; cursor:not-allowed; }
+
+  .toast{
+    position:fixed; bottom:1.5rem; right:1.5rem; background: var(--noir-800);
+    border:1px solid var(--seam); border-left:3px solid var(--stamp);
+    padding:.7rem 1rem; border-radius: var(--r-md); font-size:.68rem; color: var(--paper-text);
+    opacity:0; transform:translateY(10px);
+    transition: opacity .22s var(--ease-std), transform .22s var(--ease-std);
+    pointer-events:none; z-index:1000; max-width:320px;
+    box-shadow: 0 20px 48px -12px rgba(0,0,0,.6);
+  }
+  .toast.error{ border-left-color: var(--thread); }
+  .toast.visible{ opacity:1; transform:translateY(0); }
+
+  @keyframes dropIn{ from{ opacity:0; transform:translateY(8px);} to{ opacity:1; transform:translateY(0);} }
+  @keyframes blink{ 0%,80%,100%{opacity:.15;} 40%{opacity:1;} }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:.3;} }
+
+  * { scrollbar-width:thin; scrollbar-color: var(--seam) transparent; }
+
+  @media (max-width: 860px){
+    .board{ padding: 1.5rem; }
+    .input-area{ padding: 1rem 1.5rem; }
+  }
+  @media (max-width: 700px){
+    header .subtitle{ display:none; }
+    .layout{ flex-direction:column; }
+    .sidebar{ width:100%; border-right:none; border-bottom:1px solid var(--seam); max-height:36vh; }
+    .message.user .note{ max-width:88%; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="case-tab">
+    <span class="stamp-dot" id="caseStampDot"></span>
+    <span class="label">CASE FILE — Onboarding Buddy</span>
+  </div>
+  <span class="subtitle">Codebase Archaeology</span>
+  <div class="repo-status" id="repoBadge"><span class="dot"></span><span id="repoBadgeText">No repo loaded</span></div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+
+    <div class="step" id="stepLoad">
+      <p class="eyebrow">01 · Intake</p>
+      <input class="field" id="repoSource" placeholder="/path/to/local/repo or https://github.com/org/repo.git" />
+      <div style="height:.6rem"></div>
+      <button class="btn btn-lamp" id="loadRepoBtn">Open case →</button>
+      <p class="hint">A local path (already a git repo) is fastest. A remote URL gets shallow-cloned.</p>
+    </div>
+
+    <div class="seam-divider"></div>
+
+    <div class="step" id="stepPinpoint">
+      <p class="eyebrow">02 · Pinpoint (optional)</p>
+      <input class="field" id="filePathInput" placeholder="path/in/repo.py" />
+      <div style="height:.5rem"></div>
+      <input class="field" id="lineInput" placeholder="line number" type="number" min="1" />
+      <p class="hint">Leave blank and the search will find the relevant lines itself.</p>
+    </div>
+
+    <div class="seam-divider"></div>
+
+    <div class="step" style="flex:1; min-height:0; display:flex; flex-direction:column;">
+      <p class="eyebrow">03 · Evidence on file</p>
+      <div class="file-ledger" id="fileList"><span style="color:var(--paper-text-dim)">Open a case to list its files.</span></div>
+    </div>
+  </aside>
+
+  <div class="chat-pane">
+    <div class="board" id="messages">
+      <div class="empty-state" id="emptyState">
+        <div class="badge">UNSOLVED</div>
+        <p class="empty-text">
+          Open a repository, then ask why the code does what it does.<br>
+          Every verdict is traced through git blame, commit history, and linked GitHub PRs — never guessed.
+        </p>
+      </div>
+    </div>
+
+    <div class="input-area">
+      <textarea class="chat-input" id="chatInput" placeholder="Why does this function retry three times before failing?" rows="1"></textarea>
+      <button class="send-btn" id="sendBtn">Investigate →</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const API_BASE = window.location.origin;
+
+  const repoSource   = document.getElementById('repoSource');
+  const loadRepoBtn  = document.getElementById('loadRepoBtn');
+  const repoBadge    = document.getElementById('repoBadge');
+  const repoBadgeText= document.getElementById('repoBadgeText');
+  const caseStampDot = document.getElementById('caseStampDot');
+  const fileList     = document.getElementById('fileList');
+  const filePathInput= document.getElementById('filePathInput');
+  const lineInput    = document.getElementById('lineInput');
+  const messagesEl   = document.getElementById('messages');
+  const emptyState   = document.getElementById('emptyState');
+  const chatInput    = document.getElementById('chatInput');
+  const sendBtn      = document.getElementById('sendBtn');
+  const toastEl      = document.getElementById('toast');
+  const stepLoad      = document.getElementById('stepLoad');
+  const stepPinpoint  = document.getElementById('stepPinpoint');
+
+  let repoLoaded = false;
+
+  function api(path){ return API_BASE.replace(/\/$/, '') + path; }
+
+  let toastTimer;
+  function showToast(text, isError=false){
+    clearTimeout(toastTimer);
+    toastEl.textContent = text;
+    toastEl.className = 'toast' + (isError ? ' error' : '') + ' visible';
+    toastTimer = setTimeout(()=> toastEl.className = 'toast' + (isError?' error':''), 3200);
+  }
+
+  function hideEmpty(){ emptyState.style.display = 'none'; }
+  function scrollBottom(){ messagesEl.scrollTop = messagesEl.scrollHeight; }
+
+  function createMessage(role, text){
+    hideEmpty();
+    const wrap = document.createElement('div');
+    wrap.className = 'message ' + role;
+    if (role === 'user') {
+      const note = document.createElement('div');
+      note.className = 'note';
+      note.textContent = text;
+      wrap.appendChild(note);
+    } else {
+      const pin = document.createElement('div');
+      pin.className = 'pin';
+      const report = document.createElement('div');
+      report.className = 'report';
+      const body = document.createElement('div');
+      body.className = 'report-body';
+      body.textContent = text;
+      report.appendChild(body);
+      wrap.appendChild(pin);
+      wrap.appendChild(report);
+    }
+    messagesEl.appendChild(wrap);
+    scrollBottom();
+    return wrap;
+  }
+
+  function createTyping(){
+    hideEmpty();
+    const wrap = document.createElement('div');
+    wrap.className = 'typing-row';
+    wrap.id = 'typing';
+    wrap.innerHTML = '<div class="pin"></div><div class="typing-dots"><span></span><span></span><span></span></div>';
+    messagesEl.appendChild(wrap);
+    scrollBottom();
+    return wrap;
+  }
+
+  function removeTyping(){ const el = document.getElementById('typing'); if (el) el.remove(); }
+
+  function createError(text){
+    hideEmpty();
+    const el = document.createElement('div');
+    el.className = 'msg-error';
+    el.textContent = 'Dead end: ' + text;
+    messagesEl.appendChild(el);
+    scrollBottom();
+  }
+
+  loadRepoBtn.addEventListener('click', async () => {
+    const source = repoSource.value.trim();
+    if (!source) { showToast('Enter a local path or git URL first.', true); return; }
+    loadRepoBtn.disabled = true;
+    loadRepoBtn.textContent = 'Opening…';
+    try {
+      const res = await fetch(api('/repo/load'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source })
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(()=>({detail:'Failed to open case.'}));
+        throw new Error(err.detail || 'Failed to open case.');
+      }
+      const data = await res.json();
+      repoLoaded = true;
+      repoBadge.classList.add('active');
+      repoBadgeText.textContent = data.github ? `${data.repo_name} (${data.github})` : data.repo_name;
+      caseStampDot.classList.add('live');
+      stepLoad.classList.add('done');
+      fileList.innerHTML = '';
+      data.sample_files.forEach(f => {
+        const span = document.createElement('span');
+        span.textContent = f;
+        fileList.appendChild(span);
+      });
+      showToast(`Case opened — ${data.file_count} files on record`);
+    } catch (err) {
+      showToast(err.message, true);
+    } finally {
+      loadRepoBtn.disabled = false;
+      loadRepoBtn.textContent = 'Open case →';
+    }
+  });
+
+  async function sendChat(){
+    const text = chatInput.value.trim();
+    if (!text) return;
+    if (!repoLoaded) { showToast('Open a case (load a repo) first.', true); return; }
+    chatInput.value = '';
+    autoResize();
+    sendBtn.disabled = true;
+    createMessage('user', text);
+    const typing = createTyping();
+    try {
+      const filePath = filePathInput.value.trim() || null;
+      const line = lineInput.value ? parseInt(lineInput.value, 10) : null;
+      if (filePath || line) stepPinpoint.classList.add('done');
+      const res = await fetch(api('/ask'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: text, file_path: filePath, line })
+      });
+      removeTyping();
+      if (!res.ok) {
+        const err = await res.json().catch(()=>({detail:'Request failed.'}));
+        throw new Error(err.detail || 'Request failed.');
+      }
+      const assistantMessage = createMessage('assistant', '');
+      const body = assistantMessage.querySelector('.report-body');
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        body.textContent += decoder.decode(value);
+        scrollBottom();
+      }
+    } catch (err) {
+      removeTyping();
+      createError(err.message);
+      showToast(err.message, true);
+    } finally {
+      sendBtn.disabled = false;
+      chatInput.focus();
+    }
+  }
+
+  sendBtn.addEventListener('click', sendChat);
+  chatInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+  });
+  function autoResize(){
+    chatInput.style.height = 'auto';
+    chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+  }
+  chatInput.addEventListener('input', autoResize);
+</script>
+</body>
+</html>
