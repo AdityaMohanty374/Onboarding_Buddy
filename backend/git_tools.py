@@ -4,6 +4,7 @@ so the only runtime dependency is git itself being installed.
 """
 import os
 import re
+import shutil
 import subprocess
 import hashlib
 from dataclasses import dataclass, field
@@ -11,6 +12,11 @@ from dataclasses import dataclass, field
 from config import settings
 
 os.makedirs(settings.WORKSPACE_DIR, exist_ok=True)
+
+# Repos we've already tried deepening this process lifetime — avoids paying
+# the fetch cost on every single question once we've established this repo
+# needs more history than the initial shallow clone gave it.
+_DEEPENED: set[str] = set()
 
 
 class GitError(Exception):
@@ -55,8 +61,23 @@ def load_repo(source: str) -> str:
             pass  # offline / rate-limited — fall back to whatever we already have
         return dest
 
+    if os.path.exists(dest):
+        # Leftover from an interrupted/failed clone (killed process, disk
+        # full, network drop mid-clone, etc). `git clone` refuses to write
+        # into a non-empty directory that isn't already a valid repo, so
+        # without this the workspace gets permanently stuck. Safe to wipe:
+        # this path only ever holds a disposable clone, never the user's
+        # actual data.
+        shutil.rmtree(dest, ignore_errors=True)
+
     os.makedirs(dest, exist_ok=True)
-    _run(["git", "clone", "--depth", "200", source, dest], cwd=settings.WORKSPACE_DIR, timeout=120)
+    try:
+        _run(["git", "clone", "--depth", "200", source, dest], cwd=settings.WORKSPACE_DIR, timeout=120)
+    except GitError:
+        # Clean up a partial clone from *this* attempt too, so the next
+        # request gets a fresh shot instead of inheriting today's mess.
+        shutil.rmtree(dest, ignore_errors=True)
+        raise
     return dest
 
 
@@ -89,6 +110,7 @@ class SearchHit:
     line_no: int
     line_text: str
 
+
 # File types that talk *about* code rather than *being* code. A keyword match
 # here is usually someone's prose mentioning a name, not the definition site —
 # so we rank these below real source hits instead of treating every hit equally.
@@ -97,8 +119,10 @@ _DOC_LIKE_BASENAMES = {"changes", "changelog", "history", "news", "authors", "co
 
 _STOPWORDS = {"the", "why", "does", "this", "work", "way", "what", "how", "and", "for"}
 
+
 def _extract_terms(query: str) -> list[str]:
     return [t for t in re.findall(r"[A-Za-z_][A-Za-z0-9_]{2,}", query) if t.lower() not in _STOPWORDS]
+
 
 def _score_hit(hit: "SearchHit", terms: list[str]) -> int:
     """Higher score = more likely to be the actual definition/behavior site,
@@ -123,6 +147,7 @@ def _score_hit(hit: "SearchHit", terms: list[str]) -> int:
             score += 1
     return score
 
+
 def search_code(repo_path: str, query: str, max_hits: int) -> list[SearchHit]:
     """Keyword search via `git grep` — fast, no index to build, works on any
     commit already checked out. Falls back to per-term OR search if the
@@ -132,7 +157,7 @@ def search_code(repo_path: str, query: str, max_hits: int) -> list[SearchHit]:
     def _grep(pattern: str) -> list[SearchHit]:
         try:
             out = _run(
-                ["git", "grep", "-n", "-i", "-I", "--max-count=3", pattern],
+                ["git", "grep", "-n", "-i", "-I", "--max-count=5", pattern],
                 cwd=repo_path,
             )
         except GitError:
@@ -168,7 +193,7 @@ def search_code(repo_path: str, query: str, max_hits: int) -> list[SearchHit]:
         if key not in seen:
             seen.add(key)
             unique.append(h)
-    
+
     # Rank: real definitions in source files first, doc/changelog mentions
     # last. Stable sort keeps original grep order within equal scores.
     ranked = sorted(unique, key=lambda h: _score_hit(h, terms), reverse=True)
@@ -196,6 +221,27 @@ class BlameCommit:
     summary: str
     file: str
     line_no: int
+
+
+def _is_shallow(repo_path: str) -> bool:
+    return os.path.isfile(os.path.join(repo_path, ".git", "shallow"))
+
+
+def _deepen_once(repo_path: str, by: int = 1500):
+    """
+    Fetch more history for a shallow clone, but only the first time this
+    repo shows signs of needing it — repeated deepen attempts on every
+    question would make each request pay a slow `git fetch`, and after the
+    first deepen the clone either has enough history or the repo is just
+    older than that, in which case retrying won't help further.
+    """
+    if repo_path in _DEEPENED or not _is_shallow(repo_path):
+        return
+    _DEEPENED.add(repo_path)  # mark first, so a slow/failed fetch doesn't retry every call
+    try:
+        _run(["git", "fetch", f"--deepen={by}", "origin"], cwd=repo_path, timeout=90)
+    except GitError:
+        pass  # best-effort — worst case we keep the history we already had
 
 
 def blame_line(repo_path: str, file: str, line_no: int) -> BlameCommit | None:
@@ -227,6 +273,72 @@ def blame_line(repo_path: str, file: str, line_no: int) -> BlameCommit | None:
                 summary=summary, file=file, line_no=line_no,
             )
     return None
+
+
+def line_history(repo_path: str, file: str, line_no: int, max_commits: int = 4) -> list[BlameCommit]:
+    """
+    `git blame` only tells you who touched a line *last* — which is often a
+    trivial edit (reformatting, a type hint, a merge) that has nothing to do
+    with why the line exists. This instead walks the line's full history via
+    `git log -L`, so we can see the commit that actually *introduced* the
+    behavior alongside whatever most recently changed it.
+
+    Returns commits newest-first, capped at `max_commits`, limited by
+    whatever history the local clone actually has (a shallow clone will not
+    reach further back than its --depth).
+    """
+    _deepen_once(repo_path)
+
+    try:
+        out = _run(
+            [
+                "git", "log",
+                f"-L{line_no},{line_no}:{file}",
+                "--no-patch",
+                f"-n{max_commits}",
+                "--format=COMMIT %H%nAUTHOR %an%nDATE %at%nSUMMARY %s",
+            ],
+            cwd=repo_path,
+            timeout=20,
+        )
+    except GitError:
+        single = blame_line(repo_path, file, line_no)
+        return [single] if single else []
+
+    commits: list[BlameCommit] = []
+    current: dict = {}
+    for raw_line in out.splitlines():
+        if raw_line.startswith("COMMIT "):
+            if current.get("hash"):
+                commits.append(_dict_to_blame_commit(current, file, line_no))
+            current = {"hash": raw_line.removeprefix("COMMIT ").strip()}
+        elif raw_line.startswith("AUTHOR "):
+            current["author"] = raw_line.removeprefix("AUTHOR ").strip()
+        elif raw_line.startswith("DATE "):
+            import datetime
+            ts = raw_line.removeprefix("DATE ").strip()
+            if ts.isdigit():
+                current["date"] = datetime.datetime.utcfromtimestamp(int(ts)).strftime("%Y-%m-%d")
+        elif raw_line.startswith("SUMMARY "):
+            current["summary"] = raw_line.removeprefix("SUMMARY ").strip()
+    if current.get("hash"):
+        commits.append(_dict_to_blame_commit(current, file, line_no))
+
+    if not commits:
+        single = blame_line(repo_path, file, line_no)
+        return [single] if single else []
+    return commits[:max_commits]
+
+
+def _dict_to_blame_commit(d: dict, file: str, line_no: int) -> BlameCommit:
+    return BlameCommit(
+        commit_hash=d.get("hash", ""),
+        author=d.get("author", ""),
+        date=d.get("date", ""),
+        summary=d.get("summary", ""),
+        file=file,
+        line_no=line_no,
+    )
 
 
 def commit_body(repo_path: str, commit_hash: str) -> str:
