@@ -24,28 +24,31 @@ SYSTEM_PROMPT = {
 def build_evidence_block(entries: list[dict]) -> str:
     """
     entries: list of dicts, each describing one piece of evidence gathered
-    for a code location — snippet + blame + optional PR/issue.
+    for a code location — snippet + the line's commit history (oldest
+    relevant to most recent) + any linked PR/issue per commit.
     """
     blocks = []
     for i, e in enumerate(entries, start=1):
         parts = [f"### Evidence {i}: {e['file']}:{e['line_no']}"]
         if e.get("snippet"):
             parts.append("```\n" + e["snippet"] + "\n```")
-        if e.get("commit"):
-            c = e["commit"]
-            parts.append(
-                f"Last touched in commit {c['commit_hash'][:7]} by {c['author']} "
-                f"on {c['date']}: \"{c['summary']}\""
-            )
-        if e.get("commit_body"):
-            parts.append(f"Full commit message:\n{e['commit_body']}")
-        if e.get("pr"):
-            pr = e["pr"]
-            kind = "Pull Request" if pr["is_pr"] else "Issue"
-            parts.append(
-                f"Linked {kind} #{pr['number']} — \"{pr['title']}\"\n{pr['body']}"
-            )
-        blocks.append("\n".join(parts))
+
+        commits = e.get("commits") or []
+        if commits:
+            parts.append(f"This line's history ({len(commits)} commit(s) found, most recent first):")
+            for j, c in enumerate(commits, start=1):
+                sub = [
+                    f"  {j}. Commit {c['commit_hash'][:7]} by {c['author']} on {c['date']}: "
+                    f"\"{c['summary']}\""
+                ]
+                if c.get("commit_body") and c["commit_body"] != c["summary"]:
+                    sub.append(f"     Full message:\n     " + c["commit_body"].replace("\n", "\n     "))
+                if c.get("pr"):
+                    pr = c["pr"]
+                    kind = "Pull Request" if pr["is_pr"] else "Issue"
+                    sub.append(f"     Linked {kind} #{pr['number']} — \"{pr['title']}\"\n     {pr['body']}")
+                parts.append("\n".join(sub))
+        blocks.append("\n\n".join(parts))
     return "\n\n".join(blocks)
 
 
