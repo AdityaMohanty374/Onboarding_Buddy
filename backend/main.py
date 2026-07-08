@@ -1,7 +1,7 @@
 import base64
 import json
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -10,6 +10,7 @@ from pydantic import BaseModel
 import git_tools
 import github_api
 import prompts
+import ratelimit
 from llm import stream_response
 from config import settings
 
@@ -20,7 +21,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Evidence"],
+    expose_headers=["X-Evidence", "X-Access-Mode"],
 )
 
 # in-memory session state — this is a local dev tool, not a multi-user service
@@ -43,7 +44,9 @@ def home():
 
 
 @app.post("/repo/load")
-def load_repo(req: LoadRepoRequest):
+def load_repo(req: LoadRepoRequest, request: Request):
+    ratelimit.enforce(request, settings.RATE_LIMIT_LOAD_PER_MIN, bucket="load")
+
     try:
         repo_path = git_tools.load_repo(req.source)
     except git_tools.GitError as e:
@@ -63,6 +66,7 @@ def load_repo(req: LoadRepoRequest):
         "github": f"{owner_repo[0]}/{owner_repo[1]}" if owner_repo else None,
         "file_count": len(git_tools.list_tracked_files(repo_path, limit=100000)),
         "sample_files": files,
+        "access_mode": "developer" if ratelimit.is_developer(request) else "user",
     }
 
 
@@ -121,7 +125,9 @@ def _gather_evidence(question: str, file_path: str | None, line: int | None) -> 
 
 
 @app.post("/ask")
-def ask(req: AskRequest):
+def ask(req: AskRequest, request: Request):
+    ratelimit.enforce(request, settings.RATE_LIMIT_ASK_PER_MIN, bucket="ask")
+
     if not STATE["repo_path"]:
         raise HTTPException(status_code=400, detail="Load a repository first via /repo/load.")
 
@@ -178,7 +184,10 @@ def ask(req: AskRequest):
     return StreamingResponse(
         generate(),
         media_type="text/plain",
-        headers={"X-Evidence": evidence_header},
+        headers={
+            "X-Evidence": evidence_header,
+            "X-Access-Mode": "developer" if ratelimit.is_developer(request) else "user",
+        },
     )
 
 

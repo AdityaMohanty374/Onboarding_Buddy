@@ -20,5 +20,17 @@ class Settings:
     MAX_BLAME_COMMITS: int = 6
     MAX_CONTEXT_CHARS: int = 12000
 
+    # --- Access control ---
+    # Set this to a long random secret and share it only with yourself/trusted
+    # devs. Requests sent with header `X-Dev-Key: <this value>` skip rate
+    # limiting entirely (developer mode). Everyone else (no key, or a wrong
+    # key) is treated as "user mode" and rate limited below. If left unset,
+    # developer mode is effectively disabled — nobody can bypass limits.
+    DEV_API_KEY: str = os.environ.get("DEV_API_KEY", "")
+
+    # Per-IP limits for user mode (developer mode is exempt from all of these)
+    RATE_LIMIT_LOAD_PER_MIN: int = int(os.environ.get("RATE_LIMIT_LOAD_PER_MIN", "3"))
+    RATE_LIMIT_ASK_PER_MIN: int = int(os.environ.get("RATE_LIMIT_ASK_PER_MIN", "8"))
+
 
 settings = Settings()

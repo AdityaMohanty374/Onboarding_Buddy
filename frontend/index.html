@@ -344,6 +344,13 @@
       <p class="eyebrow">03 · Evidence on file</p>
       <div class="file-ledger" id="fileList"><span style="color:var(--paper-text-dim)">Open a case to list its files.</span></div>
     </div>
+    <div class="seam-divider"></div>
+
+    <div class="step">
+      <p class="eyebrow">Access</p>
+      <input class="field" id="devKeyInput" type="password" placeholder="Developer key (optional)" />
+      <p class="hint" id="accessModeHint">User mode — limited requests/min.</p>
+    </div>
   </aside>
 
   <div class="chat-pane">
@@ -384,6 +391,27 @@
   const toastEl      = document.getElementById('toast');
   const stepLoad      = document.getElementById('stepLoad');
   const stepPinpoint  = document.getElementById('stepPinpoint');
+  const devKeyInput   = document.getElementById('devKeyInput');
+  const accessModeHint= document.getElementById('accessModeHint');
+
+  devKeyInput.value = localStorage.getItem('ob_dev_key') || '';
+  devKeyInput.addEventListener('input', () => {
+    localStorage.setItem('ob_dev_key', devKeyInput.value);
+  });
+
+  function authHeaders(extra = {}){
+    const headers = Object.assign({}, extra);
+    if (devKeyInput.value.trim()) headers['X-Dev-Key'] = devKeyInput.value.trim();
+    return headers;
+  }
+
+  function updateAccessMode(headerValue){
+    if (headerValue === 'developer') {
+      accessModeHint.textContent = 'Developer mode — rate limits bypassed.';
+    } else {
+      accessModeHint.textContent = 'User mode — limited requests/min.';
+    }
+  }
 
   let repoLoaded = false;
 
@@ -456,14 +484,15 @@
     try {
       const res = await fetch(api('/repo/load'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ source })
       });
       if (!res.ok) {
         const err = await res.json().catch(()=>({detail:'Failed to open case.'}));
-        throw new Error(err.detail || 'Failed to open case.');
+        throw new Error(err.detail || (res.status === 429 ? 'Rate limit reached.' : 'Failed to open case.'));
       }
       const data = await res.json();
+      updateAccessMode(data.access_mode);
       repoLoaded = true;
       repoBadge.classList.add('active');
       repoBadgeText.textContent = data.github ? `${data.repo_name} (${data.github})` : data.repo_name;
@@ -580,14 +609,15 @@
       if (filePath || line) stepPinpoint.classList.add('done');
       const res = await fetch(api('/ask'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ question: text, file_path: filePath, line })
       });
       removeTyping();
       if (!res.ok) {
         const err = await res.json().catch(()=>({detail:'Request failed.'}));
-        throw new Error(err.detail || 'Request failed.');
+        throw new Error(err.detail || (res.status === 429 ? 'Rate limit reached — slow down a bit.' : 'Request failed.'));
       }
+      updateAccessMode(res.headers.get('X-Access-Mode'));
       const assistantMessage = createMessage('assistant', '');
       const reportEl = assistantMessage.querySelector('.report');
       const body = assistantMessage.querySelector('.report-body');
