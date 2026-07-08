@@ -17,6 +17,9 @@ SYSTEM_PROMPT = {
         "is new to this repo, not a beginner programmer.\n"
         "- If several commits touched the code, mention how the reasoning evolved "
         "if that's relevant, don't just cite the latest one.\n"
+        "- If your evidence is 3 test-file call sites and no real definition, do not "
+        "fabricate a commit hash or code snippet under any circumstances — say the "
+        "definition site wasn't found and stop.\n"
     ),
 }
 
