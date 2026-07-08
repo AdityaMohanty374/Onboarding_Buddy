@@ -509,41 +509,55 @@
     tagsWrap.className = 'evidence-tags';
 
     items.forEach(item => {
-      // one tag for the code location + blame commit
-      const tag = document.createElement(item.commit && item.commit.url ? 'a' : 'span');
-      tag.className = 'evidence-tag';
-      if (item.commit && item.commit.url) {
-        tag.href = item.commit.url;
-        tag.target = '_blank';
-        tag.rel = 'noopener noreferrer';
+      const commits = item.commits || [];
+      if (commits.length === 0) {
+        const tag = document.createElement('span');
+        tag.className = 'evidence-tag';
+        const kind = document.createElement('span');
+        kind.className = 'kind';
+        kind.textContent = '·';
+        const loc = document.createElement('span');
+        loc.className = 'loc';
+        loc.textContent = `${item.file}:${item.line_no}`;
+        tag.appendChild(kind);
+        tag.appendChild(loc);
+        tagsWrap.appendChild(tag);
+        return;
       }
-      const kind = document.createElement('span');
-      kind.className = 'kind';
-      kind.textContent = item.commit ? item.commit.hash : '·';
-      const loc = document.createElement('span');
-      loc.className = 'loc';
-      loc.textContent = `${item.file}:${item.line_no}`;
-      tag.appendChild(kind);
-      tag.appendChild(loc);
-      tagsWrap.appendChild(tag);
 
-      // separate tag for the linked PR/issue, if any
-      if (item.pr) {
-        const prTag = document.createElement('a');
-        prTag.className = 'evidence-tag pr';
-        prTag.href = item.pr.url;
-        prTag.target = '_blank';
-        prTag.rel = 'noopener noreferrer';
-        const prKind = document.createElement('span');
-        prKind.className = 'kind';
-        prKind.textContent = (item.pr.is_pr ? 'PR #' : 'Issue #') + item.pr.number;
-        const prLoc = document.createElement('span');
-        prLoc.className = 'loc';
-        prLoc.textContent = item.pr.title;
-        prTag.appendChild(prKind);
-        prTag.appendChild(prLoc);
-        tagsWrap.appendChild(prTag);
-      }
+      commits.forEach((c, idx) => {
+        const tag = document.createElement(c.url ? 'a' : 'span');
+        tag.className = 'evidence-tag';
+        if (c.url) { tag.href = c.url; tag.target = '_blank'; tag.rel = 'noopener noreferrer'; }
+        const kind = document.createElement('span');
+        kind.className = 'kind';
+        kind.textContent = c.hash;
+        const loc = document.createElement('span');
+        loc.className = 'loc';
+        // only show the file:line on the first (most recent) commit in the
+        // group — subsequent tags are that same line's earlier history.
+        loc.textContent = idx === 0 ? `${item.file}:${item.line_no}` : c.summary;
+        tag.appendChild(kind);
+        tag.appendChild(loc);
+        tagsWrap.appendChild(tag);
+
+        if (c.pr) {
+          const prTag = document.createElement('a');
+          prTag.className = 'evidence-tag pr';
+          prTag.href = c.pr.url;
+          prTag.target = '_blank';
+          prTag.rel = 'noopener noreferrer';
+          const prKind = document.createElement('span');
+          prKind.className = 'kind';
+          prKind.textContent = (c.pr.is_pr ? 'PR #' : 'Issue #') + c.pr.number;
+          const prLoc = document.createElement('span');
+          prLoc.className = 'loc';
+          prLoc.textContent = c.pr.title;
+          prTag.appendChild(prKind);
+          prTag.appendChild(prLoc);
+          tagsWrap.appendChild(prTag);
+        }
+      });
     });
 
     details.appendChild(tagsWrap);
