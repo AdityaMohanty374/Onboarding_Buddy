@@ -23,13 +23,34 @@ pip install -r requirements.txt
 
 export GROQ_API_KEY=your_key_here       # https://console.groq.com or any api key at your convenience
 export GITHUB_TOKEN=your_token_here     # optional — raises GitHub's 60/hr
-                                         # unauthenticated rate limit to 5000/hr
+                                        # unauthenticated rate limit to 5000/hr
+
+export DEV_API_KEY=some_long_random_secret   # optional — see "Access modes" below
+export RATE_LIMIT_LOAD_PER_MIN=3             # optional, default shown
+export RATE_LIMIT_ASK_PER_MIN=8              # optional, default shown
 
 uvicorn main:app --reload --port 8000
 ```
 
 Then open **http://localhost:8000** — the FastAPI app serves the frontend
 directly, no separate server needed.
+
+## Access modes
+
+By default every request is rate-limited per IP (`RATE_LIMIT_LOAD_PER_MIN`
+and `RATE_LIMIT_ASK_PER_MIN`), since a deployed instance is a shared, public
+resource burning your Groq/GitHub API quota. This is "user mode" — no setup
+needed, it's the default.
+
+To bypass limits for yourself, set `DEV_API_KEY` to a long random secret and
+paste that same value into the "Developer key" field in the sidebar (it's
+sent as an `X-Dev-Key` header and persisted in your browser's localStorage,
+never anywhere else). Requests with a matching key skip rate limiting
+entirely — that's "developer mode."
+
+If `DEV_API_KEY` is never set, developer mode is effectively disabled and
+every request is rate-limited, including ones that send a key — there's no
+way to accidentally leave this open.
 
 ## Using it
 
@@ -42,6 +63,34 @@ directly, no separate server needed.
 3. Optionally point it at an exact `file_path` + `line` in the sidebar if you
    already know where the code lives — this skips the keyword search and
    blames that exact line directly.
+
+## Retrieval eval
+
+`eval/run_eval.py` measures whether the retrieval pipeline actually finds
+the right evidence — hand-verified against `pallets/flask` by running
+`git log -L` directly and confirming the expected commit by hand. This
+tests retrieval only (search + blame history), never the LLM, so it's a
+repeatable, free, fast signal independent of model output variance.
+
+```bash
+cd backend
+GROQ_API_KEY=unused python eval/run_eval.py
+```
+
+Current result: **10/10 (100%)** — 6 cases checking whether `line_history()`
+finds the real originating commit for a line (not just its last cosmetic
+edit), 4 cases checking whether `search_code()` ranks real function
+definitions above docs/changelogs for a natural-language question.
+
+This number is earned, not assumed: building this eval caught a real
+scoring bug (a generic word like "default" matching an unrelated function
+name was outranking the actual `SESSION_COOKIE_SECURE` identifier) that
+dropped search accuracy to 75% until `_score_hit()` was fixed to weight
+term specificity. See `git_tools._is_specific_term()` for the fix.
+
+Add more cases to `eval/eval_cases.json` as you find repos/questions worth
+tracking — each case just needs a ground-truth commit hash or expected file,
+confirmed by running `git log -L<line>,<line>:<file>` yourself first.
 
 ## Design notes / known limits
 
@@ -75,6 +124,6 @@ backend/
   config.py       env-based settings
 frontend/
   assets/
-    favicon.png
+    32x32-favicon.png
   index.html      single-file UI (same design language as Dokument)
 ```
