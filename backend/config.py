@@ -1,5 +1,6 @@
 import os
-
+import tempfile
+from pathlib import Path
 
 class Settings:
     # Groq-hosted OpenAI-compatible endpoint (same pattern as Dokument).
@@ -13,7 +14,7 @@ class Settings:
     GITHUB_TOKEN: str = os.environ.get("GITHUB_TOKEN", "")
 
     # Where cloned repos are checked out.
-    WORKSPACE_DIR: str = os.environ.get("WORKSPACE_DIR", "/tmp/onboarding-buddy-repos")
+    WORKSPACE_DIR: str = os.environ.get("WORKSPACE_DIR", str(Path(tempfile.gettempdir()) / "onboarding-buddy-repos"))
 
     # Safety limits
     MAX_SEARCH_HITS: int = 12
