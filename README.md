@@ -1,5 +1,5 @@
 # Onboarding Buddy — Codebase Archaeology
-
+Most "chat with your codebase" tools just feed code into an LLM and hope for the best. Onboarding Buddy instead grounds every answer in verifiable evidence: it traces a question through git grep → git blame → the actual commit message → any linked GitHub PR, then hands the LLM only that retrieved evidence with explicit instructions to cite a commit hash or PR number for every claim — and to say "I don't know" rather than guess when the evidence is thin. Built with FastAPI and Llama 3.1, deployed on Render.
 Point it at any git repo and ask "why does this work this way?" — instead of
 guessing, it traces the answer through real evidence:
 
