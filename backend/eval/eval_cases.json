@@ -1,0 +1,86 @@
+[
+  {
+    "id": "pinpoint-add_url_rule-scaffold",
+    "type": "pinpoint",
+    "file": "src/flask/sansio/scaffold.py",
+    "line": 368,
+    "expected_commit_prefix": "b146a13",
+    "note": "def add_url_rule( — history should reach the 2020 refactor that introduced this exact definition, not just the most recent cosmetic touch."
+  },
+  {
+    "id": "pinpoint-add_url_rule-blueprints",
+    "type": "pinpoint",
+    "file": "src/flask/sansio/blueprints.py",
+    "line": 87,
+    "expected_commit_prefix": "7a08331",
+    "note": "def add_url_rule( in Blueprint — history should reach back to the original 2011 blueprint implementation, not stop at the 2021 type-hints commit."
+  },
+  {
+    "id": "pinpoint-errorhandler-scaffold",
+    "type": "pinpoint",
+    "file": "src/flask/sansio/scaffold.py",
+    "line": 598,
+    "expected_commit_prefix": "b146a13",
+    "note": "def errorhandler( — same 2020 Scaffold-extraction commit should surface within the returned history."
+  },
+  {
+    "id": "pinpoint-jsonify",
+    "type": "pinpoint",
+    "file": "src/flask/json/__init__.py",
+    "line": 138,
+    "expected_commit_prefix": "69f9845",
+    "note": "def jsonify( — should find the 2022 'add json provider interface' commit, the real design change behind this signature."
+  },
+  {
+    "id": "pinpoint-session-cookie-secure",
+    "type": "pinpoint",
+    "file": "src/flask/app.py",
+    "line": 222,
+    "expected_commit_prefix": "1ed756a",
+    "note": "SESSION_COOKIE_SECURE default — should reach the 2017 'add Response.max_cookie_size config' commit, not stop at a 2019 'Reformat with black' commit."
+  },
+  {
+    "id": "pinpoint-url_for",
+    "type": "pinpoint",
+    "file": "src/flask/helpers.py",
+    "line": 200,
+    "expected_commit_prefix": "39f9363",
+    "note": "def url_for( — should find the 2022 'finish moving url_for to app' commit."
+  },
+  {
+    "id": "search-add_url_rule-not-docs",
+    "type": "search",
+    "query": "why does add_url_rule take a view_func parameter",
+    "expected_file_any_of": [
+      "src/flask/sansio/scaffold.py",
+      "src/flask/sansio/blueprints.py",
+      "src/flask/sansio/app.py"
+    ],
+    "top_k": 3,
+    "note": "This is the exact query that originally failed by surfacing docs/api.rst and CHANGES.rst instead of the real definition — regression test for the search-ranking fix."
+  },
+  {
+    "id": "search-errorhandler",
+    "type": "search",
+    "query": "errorhandler decorator registers error handling function",
+    "expected_file_any_of": ["src/flask/sansio/scaffold.py"],
+    "top_k": 5,
+    "note": "Should find the real errorhandler() definition among top hits, not just docs mentioning error handling."
+  },
+  {
+    "id": "search-jsonify",
+    "type": "search",
+    "query": "jsonify serializes data to JSON response",
+    "expected_file_any_of": ["src/flask/json/__init__.py"],
+    "top_k": 5,
+    "note": "Should find the real jsonify() implementation."
+  },
+  {
+    "id": "search-session-cookie-secure",
+    "type": "search",
+    "query": "SESSION_COOKIE_SECURE default configuration value",
+    "expected_file_any_of": ["src/flask/app.py", "src/flask/sansio/app.py"],
+    "top_k": 5,
+    "note": "Should find the actual config default, not a docs page describing it."
+  }
+]
