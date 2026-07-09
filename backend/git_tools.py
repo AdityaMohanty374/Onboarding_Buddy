@@ -124,6 +124,19 @@ def _extract_terms(query: str) -> list[str]:
     return [t for t in re.findall(r"[A-Za-z_][A-Za-z0-9_]{2,}", query) if t.lower() not in _STOPWORDS]
 
 
+def _is_specific_term(term: str) -> bool:
+    """
+    Distinguishes real identifiers (SESSION_COOKIE_SECURE, add_url_rule) from
+    generic English words that happen to overlap with common function/
+    variable names (default, value, get, config). A `def default(` match is
+    weak evidence the line is relevant to a question about "default
+    configuration value" — it's just a coincidentally-named function. A
+    literal mention of SESSION_COOKIE_SECURE is strong evidence regardless
+    of whether that line happens to be a definition.
+    """
+    return "_" in term or term.isupper() or len(term) >= 10
+
+
 def _score_hit(hit: "SearchHit", terms: list[str]) -> int:
     """Higher score = more likely to be the actual definition/behavior site,
     rather than an incidental mention (docs, changelogs, comments about it)."""
@@ -136,15 +149,26 @@ def _score_hit(hit: "SearchHit", terms: list[str]) -> int:
 
     for term in terms:
         escaped = re.escape(term)
-        # `def term(` / `class Term` — this line *is* the definition.
+        specific = _is_specific_term(term)
+
+        # `def term(` / `class Term` — this line *is* the definition. This
+        # needs a wide margin over plain-mention scoring: a call site like
+        # `app.add_url_rule("/", view_func=index)` can match multiple
+        # specific terms on one line (add_url_rule + view_func), and a
+        # multi-line def signature often only has ONE term on its actual
+        # `def foo(` line (the rest of the params are on following lines).
+        # Without a wide margin, several call sites tie or beat the real
+        # definition on term-count alone.
         if re.search(rf"\b(def|class)\s+{escaped}\b", hit.line_text):
-            score += 10
+            score += 20 if specific else 5
         # `def something_with_term(` — a function whose name contains the term.
         elif re.search(rf"\bdef\s+\w*{escaped}\w*\s*\(", hit.line_text):
-            score += 6
-        # plain mention of the term anywhere else on the line.
+            score += 12 if specific else 4
+        # plain mention of the term anywhere else on the line — for a
+        # specific identifier this is strong signal on its own (there's
+        # only one SESSION_COOKIE_SECURE), for a generic word it's weak.
         elif re.search(rf"\b{escaped}\b", hit.line_text, re.IGNORECASE):
-            score += 1
+            score += 6 if specific else 1
     return score
 
 
