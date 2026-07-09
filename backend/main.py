@@ -1,5 +1,6 @@
 import base64
 import json
+import os
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -41,6 +42,42 @@ class AskRequest(BaseModel):
 @app.get("/")
 def home():
     return {"status": "running", "message": "Onboarding Buddy API"}
+
+
+@app.get("/repo/debug")
+def repo_debug():
+    """
+    Diagnostic info for whatever repo is currently loaded — no shell access
+    needed, just open this URL in a browser. Exists specifically because
+    Render's free tier doesn't give shell access, so this is the fastest way
+    to see what actually happened during a clone.
+    """
+    if not STATE["repo_path"]:
+        raise HTTPException(status_code=400, detail="No repo loaded yet — load one first.")
+
+    repo_path = STATE["repo_path"]
+    info: dict = {"repo_path": repo_path, "path_exists": os.path.isdir(repo_path)}
+
+    if not info["path_exists"]:
+        return info
+
+    info["has_git_dir"] = os.path.isdir(os.path.join(repo_path, ".git"))
+    info["is_shallow"] = git_tools._is_shallow(repo_path)
+    info["top_level_entries"] = sorted(os.listdir(repo_path))[:30]
+
+    def _safe_run(args):
+        try:
+            return git_tools._run(args, cwd=repo_path, timeout=15).strip()
+        except git_tools.GitError as e:
+            return f"ERROR: {e}"
+
+    info["remote_url"] = _safe_run(["git", "config", "--get", "remote.origin.url"])
+    info["current_branch"] = _safe_run(["git", "branch", "--show-current"])
+    info["head_commit"] = _safe_run(["git", "log", "-1", "--oneline"])
+    info["status"] = _safe_run(["git", "status", "--short", "--branch"])
+    info["ls_files_count"] = len(_safe_run(["git", "ls-files"]).splitlines())
+
+    return info
 
 
 @app.post("/repo/load")
