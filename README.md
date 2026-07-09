@@ -21,7 +21,7 @@ invent history.
 cd backend
 pip install -r requirements.txt
 
-export GROQ_API_KEY=your_key_here       # https://console.groq.com
+export GROQ_API_KEY=your_key_here       # https://console.groq.com or any api key at your convenience
 export GITHUB_TOKEN=your_token_here     # optional — raises GitHub's 60/hr
                                          # unauthenticated rate limit to 5000/hr
 
@@ -74,5 +74,7 @@ backend/
   llm.py          Groq (OpenAI-compatible) streaming client
   config.py       env-based settings
 frontend/
+  assets/
+    favicon.png
   index.html      single-file UI (same design language as Dokument)
 ```
