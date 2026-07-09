@@ -1,0 +1,17 @@
+
+ID                               TYPE      RESULT  DETAIL
+----------------------------------------------------------------------------------------------------
+pinpoint-add_url_rule-scaffold   pinpoint  PASS    expected b146a13 in [b146a13]
+pinpoint-add_url_rule-blueprints pinpoint  PASS    expected 7a08331 in [7723709, 7a08331]
+pinpoint-errorhandler-scaffold   pinpoint  PASS    expected b146a13 in [7723709, b146a13]
+pinpoint-jsonify                 pinpoint  PASS    expected 69f9845 in [69f9845, 78ae0ec]
+pinpoint-session-cookie-secure   pinpoint  PASS    expected 1ed756a in [025589e, 1ed756a, a1d9ebe, 2433522]
+pinpoint-url_for                 pinpoint  PASS    expected 39f9363 in [39f9363, 7723709, 5d60cce, 171aabc]
+search-add_url_rule-not-docs     search    PASS    expected one of ['src/flask/sansio/scaffold.py', 'src/flask/sansio/blueprints.py', 'src/flask/sansio/app.py'] in top 3: ['src/flask/sansio/app.py', 'src/flask/sansio/blueprints.py', 'src/flask/sansio/blueprints.py']
+search-errorhandler              search    PASS    expected one of ['src/flask/sansio/scaffold.py'] in top 5: ['src/flask/sansio/scaffold.py', 'src/flask/sansio/blueprints.py', 'src/flask/sansio/scaffold.py', 'src/flask/sansio/app.py', 'src/flask/sansio/blueprints.py']
+search-jsonify                   search    PASS    expected one of ['src/flask/json/__init__.py'] in top 5: ['src/flask/__init__.py', 'src/flask/json/provider.py', 'tests/test_testing.py', 'src/flask/json/__init__.py', 'tests/test_basic.py']
+search-session-cookie-secure     search    PASS    expected one of ['src/flask/app.py', 'src/flask/sansio/app.py'] in top 5: ['src/flask/sessions.py', 'src/flask/blueprints.py', 'src/flask/app.py', 'src/flask/sessions.py', 'tests/test_basic.py']
+----------------------------------------------------------------------------------------------------
+Overall:  10/10 passed (100%)
+  History accuracy (blame/log -L finds the real originating commit): 6/6 (100%)
+  Search accuracy (grep ranking finds real code, not docs): 4/4 (100%)
