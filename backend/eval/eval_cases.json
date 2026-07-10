@@ -4,7 +4,7 @@
     "type": "pinpoint",
     "file": "src/flask/sansio/scaffold.py",
     "line": 368,
-    "expected_commit_prefix": "0000000",
+    "expected_commit_prefix": "b146a13",
     "note": "def add_url_rule( — history should reach the 2020 refactor that introduced this exact definition, not just the most recent cosmetic touch."
   },
   {
