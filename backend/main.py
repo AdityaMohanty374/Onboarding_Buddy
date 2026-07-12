@@ -45,13 +45,23 @@ def home():
 
 
 @app.get("/repo/debug")
-def repo_debug():
+def repo_debug(request: Request):
     """
     Diagnostic info for whatever repo is currently loaded — no shell access
     needed, just open this URL in a browser. Exists specifically because
     Render's free tier doesn't give shell access, so this is the fastest way
     to see what actually happened during a clone.
+
+    Gated behind the developer key: it reveals internal server filesystem
+    paths and git state, which is exactly the kind of thing that shouldn't
+    be world-readable on a public deployment just because the source code
+    is open on GitHub — no reason to hand that to anyone with the URL.
     """
+    if not ratelimit.is_developer(request):
+        raise HTTPException(
+            status_code=403,
+            detail="This endpoint requires a developer key (X-Dev-Key header).",
+        )
     if not STATE["repo_path"]:
         raise HTTPException(status_code=400, detail="No repo loaded yet — load one first.")
 
